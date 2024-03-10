@@ -14,22 +14,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
 import collections
+import json
 import logging
 import os
 import shelve
 from argparse import ArgumentParser
-from pathlib import Path
-from tqdm import tqdm, trange
-from tempfile import TemporaryDirectory
 from multiprocessing import Pool
+from pathlib import Path
+from random import choice, randint, random, randrange, shuffle
+from tempfile import TemporaryDirectory
 
 import numpy as np
-from random import random, randrange, randint, shuffle, choice
+from tqdm import tqdm, trange
 
 from transformer.tokenization import BertTokenizer
-
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",

@@ -22,18 +22,12 @@ import json
 import logging
 import math
 import os
-import shutil
-import tarfile
-import tempfile
 import sys
 from io import open
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 from torch.nn import CrossEntropyLoss
-from torch.autograd import Variable
-from torch.nn.parameter import Parameter
 
 from .file_utils import WEIGHTS_NAME, CONFIG_NAME
 
