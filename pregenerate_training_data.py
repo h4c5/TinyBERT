@@ -31,9 +31,11 @@ from random import random, randrange, randint, shuffle, choice
 from transformer.tokenization import BertTokenizer
 
 
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
-                    datefmt='%m/%d/%Y %H:%M:%S',
-                    level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
+    datefmt="%m/%d/%Y %H:%M:%S",
+    level=logging.INFO,
+)
 logger = logging.getLogger(__name__)
 
 
@@ -42,9 +44,8 @@ class DocumentDatabase:
         if reduce_memory:
             self.temp_dir = TemporaryDirectory()
             self.working_dir = Path(self.temp_dir.name)
-            self.document_shelf_filepath = self.working_dir / 'shelf.db'
-            self.document_shelf = shelve.open('/cache/shelf.db',
-                                              flag='n', protocol=-1)
+            self.document_shelf_filepath = self.working_dir / "shelf.db"
+            self.document_shelf = shelve.open("/cache/shelf.db", flag="n", protocol=-1)
             self.documents = None
         else:
             self.documents = []
@@ -79,10 +80,14 @@ class DocumentDatabase:
             rand_start = self.doc_cumsum[current_idx]
             rand_end = rand_start + self.cumsum_max - self.doc_lengths[current_idx]
             sentence_index = randrange(rand_start, rand_end) % self.cumsum_max
-            sampled_doc_index = np.searchsorted(self.doc_cumsum, sentence_index, side='right')
+            sampled_doc_index = np.searchsorted(
+                self.doc_cumsum, sentence_index, side="right"
+            )
         else:
             # If we don't use sentence weighting, then every doc has an equal chance to be chosen
-            sampled_doc_index = (current_idx + randrange(1, len(self.doc_lengths))) % len(self.doc_lengths)
+            sampled_doc_index = (
+                current_idx + randrange(1, len(self.doc_lengths))
+            ) % len(self.doc_lengths)
         assert sampled_doc_index != current_idx
         if self.reduce_memory:
             return self.document_shelf[str(sampled_doc_index)]
@@ -126,15 +131,16 @@ def truncate_seq_pair(tokens_a, tokens_b, max_num_tokens):
             trunc_tokens.pop()
 
 
-MaskedLmInstance = collections.namedtuple("MaskedLmInstance",
-                                          ["index", "label"])
+MaskedLmInstance = collections.namedtuple("MaskedLmInstance", ["index", "label"])
 
 
-def create_masked_lm_predictions(tokens, masked_lm_prob, max_predictions_per_seq, whole_word_mask, vocab_list):
+def create_masked_lm_predictions(
+    tokens, masked_lm_prob, max_predictions_per_seq, whole_word_mask, vocab_list
+):
     """Creates the predictions for the masked LM objective. This is mostly copied from the Google BERT repo, but
     with several refactors to clean it up and remove a lot of unnecessary variables."""
     cand_indices = []
-    for (i, token) in enumerate(tokens):
+    for i, token in enumerate(tokens):
         if token == "[CLS]" or token == "[SEP]":
             continue
         # Whole Word Masking means that if we mask all of the wordpieces
@@ -146,13 +152,14 @@ def create_masked_lm_predictions(tokens, masked_lm_prob, max_predictions_per_seq
         # Note that Whole Word Masking does *not* change the training code
         # at all -- we still predict each WordPiece independently, softmaxed
         # over the entire vocabulary.
-        if (whole_word_mask and len(cand_indices) >= 1 and token.startswith("##")):
+        if whole_word_mask and len(cand_indices) >= 1 and token.startswith("##"):
             cand_indices[-1].append(i)
         else:
             cand_indices.append([i])
 
-    num_to_mask = min(max_predictions_per_seq,
-                      max(1, int(round(len(tokens) * masked_lm_prob))))
+    num_to_mask = min(
+        max_predictions_per_seq, max(1, int(round(len(tokens) * masked_lm_prob)))
+    )
     shuffle(cand_indices)
     masked_lms = []
     covered_indexes = set()
@@ -195,12 +202,21 @@ def create_masked_lm_predictions(tokens, masked_lm_prob, max_predictions_per_seq
 
 
 def create_instances_from_document(
-        doc_database, doc_idx, max_seq_length, short_seq_prob,
-        masked_lm_prob, max_predictions_per_seq, whole_word_mask, vocab_list, bi_text=True):
+    doc_database,
+    doc_idx,
+    max_seq_length,
+    short_seq_prob,
+    masked_lm_prob,
+    max_predictions_per_seq,
+    whole_word_mask,
+    vocab_list,
+    bi_text=True,
+):
     """This code is mostly a duplicate of the equivalent function from Google BERT's repo.
     However, we make some changes and improvements. Sampling is improved and no longer requires a loop in this function.
     Also, documents are sampled proportionally to the number of sentences they contain, which means each sentence
-    (rather than each document) has an equal chance of being sampled as a false example for the NextSentence task."""
+    (rather than each document) has an equal chance of being sampled as a false example for the NextSentence task.
+    """
     document = doc_database[doc_idx]
     # Account for [CLS], [SEP], [SEP]
     max_num_tokens = max_seq_length - 3
@@ -244,12 +260,14 @@ def create_instances_from_document(
                 tokens_b = []
 
                 # Random next
-                if bi_text and (len(current_chunk) == 1 or random() < 0.5) :
+                if bi_text and (len(current_chunk) == 1 or random() < 0.5):
                     is_random_next = True
                     target_b_length = target_seq_length - len(tokens_a)
 
                     # Sample a random document, with longer docs being sampled more frequently
-                    random_document = doc_database.sample_doc(current_idx=doc_idx, sentence_weighted=True)
+                    random_document = doc_database.sample_doc(
+                        current_idx=doc_idx, sentence_weighted=True
+                    )
 
                     random_start = randrange(0, len(random_document))
                     for j in range(random_start, len(random_document)):
@@ -280,17 +298,27 @@ def create_instances_from_document(
                 tokens = ["[CLS]"] + tokens_a + ["[SEP]"] + tokens_b + ["[SEP]"]
                 # The segment IDs are 0 for the [CLS] token, the A tokens and the first [SEP]
                 # They are 1 for the B tokens and the final [SEP]
-                segment_ids = [0 for _ in range(len(tokens_a) + 2)] + [1 for _ in range(len(tokens_b) + 1)]
+                segment_ids = [0 for _ in range(len(tokens_a) + 2)] + [
+                    1 for _ in range(len(tokens_b) + 1)
+                ]
 
-                tokens, masked_lm_positions, masked_lm_labels = create_masked_lm_predictions(
-                    tokens, masked_lm_prob, max_predictions_per_seq, whole_word_mask, vocab_list)
+                tokens, masked_lm_positions, masked_lm_labels = (
+                    create_masked_lm_predictions(
+                        tokens,
+                        masked_lm_prob,
+                        max_predictions_per_seq,
+                        whole_word_mask,
+                        vocab_list,
+                    )
+                )
 
                 instance = {
                     "tokens": tokens,
                     "segment_ids": segment_ids,
                     "is_random_next": is_random_next,
                     "masked_lm_positions": masked_lm_positions,
-                    "masked_lm_labels": masked_lm_labels}
+                    "masked_lm_labels": masked_lm_labels,
+                }
 
                 instances.append(instance)
             current_chunk = []
@@ -303,21 +331,28 @@ def create_instances_from_document(
 def create_training_file(docs, vocab_list, args, epoch_num, bi_text=True):
     epoch_filename = args.output_dir / "epoch_{}.json".format(epoch_num)
     num_instances = 0
-    with epoch_filename.open('w') as epoch_file:
+    with epoch_filename.open("w") as epoch_file:
         for doc_idx in trange(len(docs), desc="Document"):
             doc_instances = create_instances_from_document(
-                docs, doc_idx, max_seq_length=args.max_seq_len, short_seq_prob=args.short_seq_prob,
-                masked_lm_prob=args.masked_lm_prob, max_predictions_per_seq=args.max_predictions_per_seq,
-                whole_word_mask=args.do_whole_word_mask, vocab_list=vocab_list, bi_text=bi_text)
+                docs,
+                doc_idx,
+                max_seq_length=args.max_seq_len,
+                short_seq_prob=args.short_seq_prob,
+                masked_lm_prob=args.masked_lm_prob,
+                max_predictions_per_seq=args.max_predictions_per_seq,
+                whole_word_mask=args.do_whole_word_mask,
+                vocab_list=vocab_list,
+                bi_text=bi_text,
+            )
             doc_instances = [json.dumps(instance) for instance in doc_instances]
             for instance in doc_instances:
-                epoch_file.write(instance + '\n')
+                epoch_file.write(instance + "\n")
                 num_instances += 1
     metrics_filename = args.output_dir / "epoch_{}_metrics.json".format(epoch_num)
-    with metrics_filename.open('w') as metrics_file:
+    with metrics_filename.open("w") as metrics_file:
         metrics = {
             "num_training_examples": num_instances,
-            "max_seq_len": args.max_seq_len
+            "max_seq_len": args.max_seq_len,
         }
         metrics_file.write(json.dumps(metrics))
 
@@ -326,35 +361,63 @@ def create_training_file(docs, vocab_list, args, epoch_num, bi_text=True):
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument('--train_corpus', type=Path, required=True)
+    parser.add_argument("--train_corpus", type=Path, required=True)
     parser.add_argument("--output_dir", type=Path, required=True)
     parser.add_argument("--bert_model", type=str, required=True)
     parser.add_argument("--do_lower_case", action="store_true")
-    parser.add_argument("--do_whole_word_mask", action="store_true",
-                        help="Whether to use whole word masking rather than per-WordPiece masking.")
-    parser.add_argument("--reduce_memory", action="store_true",
-                        help="Reduce memory usage for large datasets by keeping data on disc rather than in memory")
+    parser.add_argument(
+        "--do_whole_word_mask",
+        action="store_true",
+        help="Whether to use whole word masking rather than per-WordPiece masking.",
+    )
+    parser.add_argument(
+        "--reduce_memory",
+        action="store_true",
+        help="Reduce memory usage for large datasets by keeping data on disc rather than in memory",
+    )
 
-    parser.add_argument("--num_workers", type=int, default=1,
-                        help="The number of workers to use to write the files")
-    parser.add_argument("--epochs_to_generate", type=int, default=3,
-                        help="Number of epochs of data to pregenerate")
+    parser.add_argument(
+        "--num_workers",
+        type=int,
+        default=1,
+        help="The number of workers to use to write the files",
+    )
+    parser.add_argument(
+        "--epochs_to_generate",
+        type=int,
+        default=3,
+        help="Number of epochs of data to pregenerate",
+    )
     parser.add_argument("--max_seq_len", type=int, default=128)
-    parser.add_argument("--short_seq_prob", type=float, default=0.1,
-                        help="Probability of making a short sentence as a training example")
-    parser.add_argument("--masked_lm_prob", type=float, default=0.0,
-                        help="Probability of masking each token for the LM task")  # no [mask] symbol in corpus
-    parser.add_argument("--max_predictions_per_seq", type=int, default=20,
-                        help="Maximum number of tokens to mask in each sequence")
-    parser.add_argument('--data_url', type=str, default="")
-    parser.add_argument('--oneseq', action='store_true')
+    parser.add_argument(
+        "--short_seq_prob",
+        type=float,
+        default=0.1,
+        help="Probability of making a short sentence as a training example",
+    )
+    parser.add_argument(
+        "--masked_lm_prob",
+        type=float,
+        default=0.0,
+        help="Probability of masking each token for the LM task",
+    )  # no [mask] symbol in corpus
+    parser.add_argument(
+        "--max_predictions_per_seq",
+        type=int,
+        default=20,
+        help="Maximum number of tokens to mask in each sequence",
+    )
+    parser.add_argument("--data_url", type=str, default="")
+    parser.add_argument("--oneseq", action="store_true")
 
     args = parser.parse_args()
 
     if args.num_workers > 1 and args.reduce_memory:
         raise ValueError("Cannot use multiple workers while reducing memory")
 
-    tokenizer = BertTokenizer.from_pretrained(args.bert_model, do_lower_case=args.do_lower_case)
+    tokenizer = BertTokenizer.from_pretrained(
+        args.bert_model, do_lower_case=args.do_lower_case
+    )
     vocab_list = list(tokenizer.vocab.keys())
     doc_num = 0
     with DocumentDatabase(reduce_memory=args.reduce_memory) as docs:
@@ -367,39 +430,49 @@ def main():
                     doc = []
                     doc_num += 1
                     if doc_num % 100 == 0:
-                        logger.info('loaded {} docs!'.format(doc_num))
+                        logger.info("loaded {} docs!".format(doc_num))
                 else:
                     tokens = tokenizer.tokenize(line)
                     doc.append(tokens)
             if doc:
-                docs.add_document(doc)  # If the last doc didn't end on a newline, make sure it still gets added
+                docs.add_document(
+                    doc
+                )  # If the last doc didn't end on a newline, make sure it still gets added
         if len(docs) <= 1:
-            exit("ERROR: No document breaks were found in the input file! These are necessary to allow the script to "
-                 "ensure that random NextSentences are not sampled from the same document. Please add blank lines to "
-                 "indicate breaks between documents in your input file. If your dataset does not contain multiple "
-                 "documents, blank lines can be inserted at any natural boundary, such as the ends of chapters, "
-                 "sections or paragraphs.")
+            exit(
+                "ERROR: No document breaks were found in the input file! These are necessary to allow the script to "
+                "ensure that random NextSentences are not sampled from the same document. Please add blank lines to "
+                "indicate breaks between documents in your input file. If your dataset does not contain multiple "
+                "documents, blank lines can be inserted at any natural boundary, such as the ends of chapters, "
+                "sections or paragraphs."
+            )
 
         args.output_dir.mkdir(exist_ok=True)
 
         if args.num_workers > 1:
             writer_workers = Pool(min(args.num_workers, args.epochs_to_generate))
-            arguments = [(docs, vocab_list, args, idx) for idx in range(args.epochs_to_generate)]
+            arguments = [
+                (docs, vocab_list, args, idx) for idx in range(args.epochs_to_generate)
+            ]
             writer_workers.starmap(create_training_file, arguments)
         else:
             for epoch in trange(args.epochs_to_generate, desc="Epoch"):
                 bi_text = True if not args.oneseq else False
-                epoch_file, metric_file = create_training_file(docs, vocab_list, args, epoch, bi_text=bi_text)
+                epoch_file, metric_file = create_training_file(
+                    docs, vocab_list, args, epoch, bi_text=bi_text
+                )
 
                 if oncloud:
-                    logging.info(mox.file.list_directory(str(args.output_dir), recursive=True))
-                    logging.info(mox.file.list_directory('.', recursive=True))
+                    logging.info(
+                        mox.file.list_directory(str(args.output_dir), recursive=True)
+                    )
+                    logging.info(mox.file.list_directory(".", recursive=True))
                     mox.file.copy_parallel(str(args.output_dir), args.data_url)
-                    mox.file.copy_parallel('.', args.data_url)
+                    mox.file.copy_parallel(".", args.data_url)
 
                     os.remove(str(epoch_file))
                     os.remove(str(metric_file))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
